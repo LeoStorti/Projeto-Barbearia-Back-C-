@@ -2892,11 +2892,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\ferre\\OneDrive\\Área de Trabalho\\TesteGean_v4\\APIBarbearia\\APIBarbearia\\APIBarbearia.csproj",
+      "projectUniqueName": "C:\\Users\\ferre\\OneDrive\\Área de Trabalho\\ProjetoBarbearia\\Projeto-Barbearia-Back-C-\\APIBarbearia.csproj",
       "projectName": "APIBarbearia",
-      "projectPath": "C:\\Users\\ferre\\OneDrive\\Área de Trabalho\\TesteGean_v4\\APIBarbearia\\APIBarbearia\\APIBarbearia.csproj",
+      "projectPath": "C:\\Users\\ferre\\OneDrive\\Área de Trabalho\\ProjetoBarbearia\\Projeto-Barbearia-Back-C-\\APIBarbearia.csproj",
       "packagesPath": "C:\\Users\\ferre\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\ferre\\OneDrive\\Área de Trabalho\\TesteGean_v4\\APIBarbearia\\APIBarbearia\\obj\\",
+      "outputPath": "C:\\Users\\ferre\\OneDrive\\Área de Trabalho\\ProjetoBarbearia\\Projeto-Barbearia-Back-C-\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\ferre\\AppData\\Roaming\\NuGet\\NuGet.Config",

@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("APIBarbearia")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d3bd4a967c0b54bea03777a39d2adc8c133c2a7d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c1b66b769ae733dac38d4660aa78473e49f260a9")]
 [assembly: System.Reflection.AssemblyProductAttribute("APIBarbearia")]
 [assembly: System.Reflection.AssemblyTitleAttribute("APIBarbearia")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
