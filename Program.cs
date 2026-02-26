@@ -3,36 +3,55 @@ using APIBarbearia.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.Extensions.Configuration;
 using System.Text;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuração do banco de dados
+// ConfiguraÃ§Ã£o do banco de dados
 var connection = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<APIDbContext>(options =>
-    options.UseSqlServer(connection));
+    options.UseMySql(connection, ServerVersion.AutoDetect(connection)));
 
-// Configuração dos serviços MVC
+// ConfiguraÃ§Ã£o dos serviÃ§os MVC
 builder.Services.AddControllers();
 
-// Configuração do Swagger/OpenAPI
+// ConfiguraÃ§Ã£o do Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configuração do CORS
+// (NOVO) ProblemDetails - ajuda a nÃ£o devolver 500 "mudo" em DEV
+builder.Services.AddProblemDetails(options =>
+{
+    // Em produÃ§Ã£o, nÃ£o expor detalhes internos
+    options.CustomizeProblemDetails = ctx =>
+    {
+        // Inclui o traceId sempre
+        ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier;
+
+        // Inclui o correlationId se existir
+        var cid = ctx.HttpContext.Request.Headers["X-Correlation-Id"].ToString();
+        if (!string.IsNullOrWhiteSpace(cid))
+            ctx.ProblemDetails.Extensions["correlationId"] = cid;
+    };
+});
+
+// ConfiguraÃ§Ã£o do CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
-        builder =>
+        policyBuilder =>
         {
-            builder.WithOrigins("http://localhost:4200") // Certifique-se de usar https:// se for o caso
-                   .AllowAnyHeader()
-                   .AllowAnyMethod();
+            var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+                ?? new[] { "http://localhost:4200" };
+
+            policyBuilder.WithOrigins(allowedOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod();
         });
 });
 
-// Configuração da autenticação JWT
+// ConfiguraÃ§Ã£o da autenticaÃ§Ã£o JWT
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -50,20 +69,69 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 var app = builder.Build();
 
-// Middleware para redirecionamento HTTPS
-app.UseHttpsRedirection();
+// (NOVO) Middleware de CorrelationId: propaga X-Correlation-Id e devolve no response
+app.Use(async (context, next) =>
+{
+    var cid = context.Request.Headers["X-Correlation-Id"].ToString();
+    if (!string.IsNullOrWhiteSpace(cid))
+    {
+        context.Response.Headers["X-Correlation-Id"] = cid;
+    }
 
-// Middleware para aplicar política CORS
+    await next();
+});
+
+// (NOVO) Exception handler + ProblemDetails
+// Em DEV: retorna body com problem+json (com detalhe), em vez de 500 vazio.
+// Em PROD: retorna ProblemDetails sem detalhes internos.
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        var env = context.RequestServices.GetRequiredService<IWebHostEnvironment>();
+
+        var pd = new ProblemDetails
+        {
+            Title = "Erro interno no servidor",
+            Status = StatusCodes.Status500InternalServerError,
+            Instance = context.Request.Path
+        };
+
+        // sempre inclui ids
+        pd.Extensions["traceId"] = context.TraceIdentifier;
+        var cid = context.Request.Headers["X-Correlation-Id"].ToString();
+        if (!string.IsNullOrWhiteSpace(cid))
+            pd.Extensions["correlationId"] = cid;
+
+        if (env.IsDevelopment())
+        {
+            // detalhe genÃ©rico (a exception detalhada jÃ¡ fica no log)
+            pd.Detail = "Ocorreu uma exceÃ§Ã£o no servidor. Verifique os logs do backend usando o correlationId/traceId.";
+        }
+
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/problem+json";
+        await context.Response.WriteAsJsonAsync(pd);
+    });
+});
+
+// Middleware para redirecionamento HTTPS
+if (!app.Environment.IsEnvironment("Docker"))
+{
+    app.UseHttpsRedirection();
+}
+
+// Middleware para aplicar polÃ­tica CORS
 app.UseCors("AllowFrontend");
 
-// Middleware de autenticação
+// Middleware de autenticaÃ§Ã£o
 app.UseAuthentication();
 
-// Middleware de autorização
+// Middleware de autorizaÃ§Ã£o
 app.UseAuthorization();
 
 // Middleware de desenvolvimento para Swagger
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
 {
     app.UseSwagger();
     app.UseSwaggerUI(options =>

@@ -13,10 +13,14 @@ namespace APIBarbearia.Controllers
     public class ClientesController : ControllerBase
     {
         private readonly APIDbContext _context;
+        private readonly ILogger<ClientesController> _logger;
+        private readonly IWebHostEnvironment _env;
 
-        public ClientesController(APIDbContext context) // Aqui, utilize APIDbContext
+        public ClientesController(APIDbContext context, ILogger<ClientesController> logger, IWebHostEnvironment env)
         {
             _context = context;
+            _logger = logger;
+            _env = env;
         }
 
         // GET: api/Clientes
@@ -54,6 +58,7 @@ namespace APIBarbearia.Controllers
             try
             {
                 await _context.SaveChangesAsync();
+                return NoContent();
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -61,23 +66,56 @@ namespace APIBarbearia.Controllers
                 {
                     return NotFound();
                 }
-                else
-                {
-                    throw;
-                }
-            }
 
-            return NoContent();
+                throw;
+            }
+            catch (DbUpdateException ex)
+            {
+                var correlationId = Request.Headers["X-Correlation-Id"].ToString();
+                _logger.LogError(ex, "Erro ao atualizar cliente {ClienteId}. CorrelationId={CorrelationId}", id, correlationId);
+
+                var pd = new ProblemDetails
+                {
+                    Title = "Erro ao atualizar cliente",
+                    Detail = _env.IsDevelopment() ? (ex.InnerException?.Message ?? ex.Message) : null,
+                    Status = 500,
+                    Instance = HttpContext.Request.Path
+                };
+                pd.Extensions["correlationId"] = correlationId;
+                pd.Extensions["traceId"] = HttpContext.TraceIdentifier;
+
+                return StatusCode(500, pd);
+            }
         }
 
         // POST: api/Clientes
         [HttpPost]
         public async Task<ActionResult<Cliente>> PostCliente(Cliente cliente)
         {
-            _context.Clientes.Add(cliente);
-            await _context.SaveChangesAsync();
+            try
+            {
+                _context.Clientes.Add(cliente);
+                await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetCliente", new { id = cliente.ClienteId }, cliente);
+                return CreatedAtAction("GetCliente", new { id = cliente.ClienteId }, cliente);
+            }
+            catch (DbUpdateException ex)
+            {
+                var correlationId = Request.Headers["X-Correlation-Id"].ToString();
+                _logger.LogError(ex, "Erro ao inserir cliente. CorrelationId={CorrelationId}. Payload={@Cliente}", correlationId, cliente);
+
+                var pd = new ProblemDetails
+                {
+                    Title = "Erro ao salvar cliente",
+                    Detail = _env.IsDevelopment() ? (ex.InnerException?.Message ?? ex.Message) : null,
+                    Status = 500,
+                    Instance = HttpContext.Request.Path
+                };
+                pd.Extensions["correlationId"] = correlationId;
+                pd.Extensions["traceId"] = HttpContext.TraceIdentifier;
+
+                return StatusCode(500, pd);
+            }
         }
 
         // DELETE: api/Clientes/5
@@ -91,9 +129,29 @@ namespace APIBarbearia.Controllers
             }
 
             _context.Clientes.Remove(cliente);
-            await _context.SaveChangesAsync();
 
-            return NoContent();
+            try
+            {
+                await _context.SaveChangesAsync();
+                return NoContent();
+            }
+            catch (DbUpdateException ex)
+            {
+                var correlationId = Request.Headers["X-Correlation-Id"].ToString();
+                _logger.LogError(ex, "Erro ao excluir cliente {ClienteId}. CorrelationId={CorrelationId}", id, correlationId);
+
+                var pd = new ProblemDetails
+                {
+                    Title = "Erro ao excluir cliente",
+                    Detail = _env.IsDevelopment() ? (ex.InnerException?.Message ?? ex.Message) : null,
+                    Status = 500,
+                    Instance = HttpContext.Request.Path
+                };
+                pd.Extensions["correlationId"] = correlationId;
+                pd.Extensions["traceId"] = HttpContext.TraceIdentifier;
+
+                return StatusCode(500, pd);
+            }
         }
 
         private bool ClienteExists(int id)

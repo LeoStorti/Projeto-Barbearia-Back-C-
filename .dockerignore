@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/*.user
+**/*.suo
+**/*.cache
+**/*.log
+
+# Se tiver arquivos locais de segredo
+appsettings.*.json
+*.pfx
+*.pem

@@ -7,18 +7,6 @@ namespace API.Context
     {
         public APIDbContext(DbContextOptions<APIDbContext> options) : base(options)
         {
-            try
-            {
-                if (!this.Database.CanConnect())
-                {
-                    throw new Exception("Não foi possível conectar ao banco de dados.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Erro ao conectar ao banco de dados: " + ex.Message);
-                throw;
-            }
         }
 
         public DbSet<Cliente> Clientes { get; set; }  // Adicione esta linha
@@ -37,6 +25,7 @@ namespace API.Context
         public DbSet<NivelAcesso> NivelAcesso { get; set; }
         public DbSet<Empresa> Empresas { get; set; }
         public DbSet<Salario> Salarios { get; set; }
+        public DbSet<DiaBloqueado> DiasBloqueados { get; set; }
 
     }
 

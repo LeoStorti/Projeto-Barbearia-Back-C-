@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 
 namespace APIBarbearia.Models
 {
@@ -11,12 +12,17 @@ namespace APIBarbearia.Models
         public int ProfissionalId { get; set; }
         public int ServicoId { get; set; }
         public DateTime DataHora { get; set; }
-        public string Status { get; set; }
-        public string Observacoes { get; set; }
+        public string? Status { get; set; }
+        public string? Observacoes { get; set; }
 
         // Propriedades de navegação
-        public Cliente Cliente { get; set; }
-        public Profissional Profissional { get; set; }
-        public Servico Servico { get; set; }
+        [ValidateNever]
+        public Cliente? Cliente { get; set; }
+
+        [ValidateNever]
+        public Profissional? Profissional { get; set; }
+
+        [ValidateNever]
+        public Servico? Servico { get; set; }
     }
 }
