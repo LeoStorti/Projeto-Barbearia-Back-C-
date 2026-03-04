@@ -74,10 +74,29 @@ namespace APIBarbearia.Controllers
         [HttpPost]
         public async Task<ActionResult<Servico>> PostServico(Servico servico)
         {
-            _context.Servicos.Add(servico);
-            await _context.SaveChangesAsync();
+            try
+            {
+                _context.Servicos.Add(servico);
+                await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetServico", new { id = servico.ServicoId }, servico);
+                return CreatedAtAction("GetServico", new { id = servico.ServicoId }, servico);
+            }
+            catch (DbUpdateException ex)
+            {
+                return StatusCode(500, new
+                {
+                    title = "Erro ao salvar serviço",
+                    detail = ex.InnerException?.Message ?? ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    title = "Erro inesperado ao salvar serviço",
+                    detail = ex.Message
+                });
+            }
         }
 
         // DELETE: api/Servicos/5

@@ -1,10 +1,12 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace APIBarbearia.Models
 {
     public class Cliente
     {
         [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int ClienteId { get; set; }
 
         [Required(ErrorMessage = "Nome é obrigatório.")]

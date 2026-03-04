@@ -197,3 +197,4 @@ C:\Users\ferre\OneDrive\Área de Trabalho\ProjetoBarbearia\Projeto-Barbearia-Bac
 C:\Users\ferre\OneDrive\Área de Trabalho\ProjetoBarbearia\Projeto-Barbearia-Back-C-\bin\Debug\net8.0\_publish_docker\_publish_docker\APIBarbearia.staticwebassets.endpoints.json
 C:\Users\ferre\OneDrive\Área de Trabalho\ProjetoBarbearia\Projeto-Barbearia-Back-C-\bin\Debug\net8.0\_publish_docker\_publish_docker\appsettings.Development.json
 C:\Users\ferre\OneDrive\Área de Trabalho\ProjetoBarbearia\Projeto-Barbearia-Back-C-\bin\Debug\net8.0\_publish_docker\_publish_docker\appsettings.json
+C:\Users\ferre\OneDrive\Área de Trabalho\ProjetoBarbearia\Projeto-Barbearia-Back-C-\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
