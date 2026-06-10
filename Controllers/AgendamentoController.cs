@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using APIBarbearia.Models;
 using API.Context;
@@ -10,6 +12,7 @@ namespace APIBarbearia.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class AgendamentosController : ControllerBase
     {
         private readonly APIDbContext _context;
@@ -23,10 +26,17 @@ namespace APIBarbearia.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Agendamento>>> GetAgendamentos()
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
+            }
+
             return await _context.Agendamentos
                 .Include(a => a.Cliente)       // Inclui a entidade Cliente relacionada
                 .Include(a => a.Profissional)  // Inclui a entidade Profissional relacionada
                 .Include(a => a.Servico)       // Inclui a entidade Servico relacionada
+                .Where(a => a.Profissional != null && a.Profissional.EmpresaId == empresaId.Value)
                 .ToListAsync();
         }
 
@@ -34,11 +44,17 @@ namespace APIBarbearia.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<Agendamento>> GetAgendamento(int id)
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
+            }
+
             var agendamento = await _context.Agendamentos
                 .Include(a => a.Cliente)       // Inclui a entidade Cliente relacionada
                 .Include(a => a.Profissional)  // Inclui a entidade Profissional relacionada
                 .Include(a => a.Servico)       // Inclui a entidade Servico relacionada
-                .FirstOrDefaultAsync(a => a.AgendamentoId == id);
+                .FirstOrDefaultAsync(a => a.AgendamentoId == id && a.Profissional != null && a.Profissional.EmpresaId == empresaId.Value);
 
             if (agendamento == null)
             {
@@ -56,6 +72,12 @@ namespace APIBarbearia.Controllers
             if (agendamento == null)
             {
                 return BadRequest();
+            }
+
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
             }
 
             // Compat: caso o cliente envie apenas as entidades relacionadas, copiar os IDs.
@@ -86,22 +108,48 @@ namespace APIBarbearia.Controllers
                 return BadRequest("ClienteId, ProfissionalId e ServicoId são obrigatórios.");
             }
 
-            var clienteExiste = await _context.Clientes.AnyAsync(c => c.ClienteId == agendamento.ClienteId);
+            var clienteExiste = await _context.Clientes.AnyAsync(c => c.ClienteId == agendamento.ClienteId && c.EmpresaId == empresaId.Value);
             if (!clienteExiste)
             {
-                return BadRequest("Cliente inválido ou não encontrado.");
+                return BadRequest("Cliente inválido para a empresa autenticada.");
             }
 
-            var profissionalExiste = await _context.Profissionais.AnyAsync(p => p.ProfissionalId == agendamento.ProfissionalId);
+            var profissionalExiste = await _context.Profissionais.AnyAsync(p => p.ProfissionalId == agendamento.ProfissionalId && p.EmpresaId == empresaId.Value);
             if (!profissionalExiste)
             {
-                return BadRequest("Profissional inválido ou não encontrado.");
+                return BadRequest("Profissional inválido para a empresa autenticada.");
             }
 
-            var servicoExiste = await _context.Servicos.AnyAsync(s => s.ServicoId == agendamento.ServicoId);
+            var servicoExiste = await _context.Servicos.AnyAsync(s => s.ServicoId == agendamento.ServicoId && s.EmpresaId == empresaId.Value);
             if (!servicoExiste)
             {
-                return BadRequest("Serviço inválido ou não encontrado.");
+                return BadRequest("Serviço inválido para a empresa autenticada.");
+            }
+
+            // Impede conflito no mesmo minuto para o mesmo profissional.
+            var inicioSlot = new DateTime(
+                agendamento.DataHora.Year,
+                agendamento.DataHora.Month,
+                agendamento.DataHora.Day,
+                agendamento.DataHora.Hour,
+                agendamento.DataHora.Minute,
+                0,
+                agendamento.DataHora.Kind);
+            var fimSlot = inicioSlot.AddMinutes(1);
+
+            var candidatosConflito = await _context.Agendamentos
+                .AsNoTracking()
+                .Where(a =>
+                a.ProfissionalId == agendamento.ProfissionalId &&
+                a.DataHora >= inicioSlot &&
+                a.DataHora < fimSlot)
+                .ToListAsync();
+
+            var conflito = candidatosConflito.Any(a => !IsStatusCancelado(a.Status));
+
+            if (conflito)
+            {
+                return Conflict("Horário indisponível para este profissional.");
             }
 
             _context.Agendamentos.Add(agendamento);
@@ -117,6 +165,12 @@ namespace APIBarbearia.Controllers
             if (id != agendamento.AgendamentoId)
             {
                 return BadRequest();
+            }
+
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
             }
 
             // Mesma proteção do POST: evitar que o EF tente inserir/atualizar entidades relacionadas.
@@ -136,7 +190,57 @@ namespace APIBarbearia.Controllers
             agendamento.Profissional = null;
             agendamento.Servico = null;
 
-            _context.Entry(agendamento).State = EntityState.Modified;
+            var existing = await _context.Agendamentos
+                .Include(a => a.Profissional)
+                .FirstOrDefaultAsync(a => a.AgendamentoId == id && a.Profissional != null && a.Profissional.EmpresaId == empresaId.Value);
+            if (existing == null)
+            {
+                return NotFound();
+            }
+
+            var clienteValido = await _context.Clientes.AnyAsync(c => c.ClienteId == agendamento.ClienteId && c.EmpresaId == empresaId.Value);
+            var profissionalValido = await _context.Profissionais.AnyAsync(p => p.ProfissionalId == agendamento.ProfissionalId && p.EmpresaId == empresaId.Value);
+            var servicoValido = await _context.Servicos.AnyAsync(s => s.ServicoId == agendamento.ServicoId && s.EmpresaId == empresaId.Value);
+            if (!clienteValido || !profissionalValido || !servicoValido)
+            {
+                return BadRequest("Entidades relacionadas inválidas para a empresa autenticada.");
+            }
+
+            // Impede conflito com outro agendamento no mesmo minuto para o mesmo profissional.
+            var inicioSlot = new DateTime(
+                agendamento.DataHora.Year,
+                agendamento.DataHora.Month,
+                agendamento.DataHora.Day,
+                agendamento.DataHora.Hour,
+                agendamento.DataHora.Minute,
+                0,
+                agendamento.DataHora.Kind);
+            var fimSlot = inicioSlot.AddMinutes(1);
+
+            var candidatosConflito = await _context.Agendamentos
+                .AsNoTracking()
+                .Where(a =>
+                a.AgendamentoId != id &&
+                a.ProfissionalId == agendamento.ProfissionalId &&
+                a.DataHora >= inicioSlot &&
+                a.DataHora < fimSlot)
+                .ToListAsync();
+
+            var conflito = candidatosConflito.Any(a => !IsStatusCancelado(a.Status));
+
+            if (conflito)
+            {
+                return Conflict("Horário indisponível para este profissional.");
+            }
+
+            existing.ClienteId = agendamento.ClienteId;
+            existing.ProfissionalId = agendamento.ProfissionalId;
+            existing.ServicoId = agendamento.ServicoId;
+            existing.DataHora = agendamento.DataHora;
+            existing.Status = agendamento.Status;
+            existing.Observacoes = agendamento.Observacoes;
+
+            _context.Entry(existing).State = EntityState.Modified;
 
             try
             {
@@ -161,7 +265,15 @@ namespace APIBarbearia.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteAgendamento(int id)
         {
-            var agendamento = await _context.Agendamentos.FindAsync(id);
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
+            }
+
+            var agendamento = await _context.Agendamentos
+                .Include(a => a.Profissional)
+                .FirstOrDefaultAsync(a => a.AgendamentoId == id && a.Profissional != null && a.Profissional.EmpresaId == empresaId.Value);
             if (agendamento == null)
             {
                 return NotFound();
@@ -176,6 +288,36 @@ namespace APIBarbearia.Controllers
         private bool AgendamentoExists(int id)
         {
             return _context.Agendamentos.Any(e => e.AgendamentoId == id);
+        }
+
+        private async Task<int?> GetEmpresaIdAsync()
+        {
+            var claim = User.FindFirst("EmpresaId")?.Value;
+            if (!string.IsNullOrWhiteSpace(claim) && int.TryParse(claim, out var claimEmpresaId) && claimEmpresaId > 0)
+            {
+                return claimEmpresaId;
+            }
+
+            var email = User.FindFirstValue(ClaimTypes.Name)
+                ?? User.FindFirstValue(ClaimTypes.Email)
+                ?? User.FindFirst("unique_name")?.Value;
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return null;
+            }
+
+            return await _context.Usuarios
+                .AsNoTracking()
+                .Where(u => u.Email == email)
+                .Select(u => (int?)u.EmpresaId)
+                .FirstOrDefaultAsync();
+        }
+
+        private static bool IsStatusCancelado(string? status)
+        {
+            var st = (status ?? string.Empty).Trim().ToLowerInvariant();
+            return st == "cancelado" || st == "canceled" || st == "cancelled";
         }
     }
 }

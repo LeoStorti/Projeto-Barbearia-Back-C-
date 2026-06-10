@@ -9,8 +9,8 @@ namespace APIBarbearia.Models
         [Key]
         public int MovimentacaoId { get; set; }
         public int ProdutoId { get; set; }
-        public Produto Produto { get; set; }
-        public string TipoMovimentacao { get; set; } // Entrada ou Saída
+        public Produto Produto { get; set; } = null!;
+        public string TipoMovimentacao { get; set; } = string.Empty; // Entrada ou Saída
         public int Quantidade { get; set; }
         public DateTime DataMovimentacao { get; set; }
     }

@@ -11,7 +11,7 @@ namespace APIBarbearia.Models
         //public Venda venda { get; set; }
 
         public int ProdutoId { get; set; }
-        public Produto Produto { get; set; }
+        public Produto Produto { get; set; } = null!;
 
         public int Quantidade { get; set; }
         public decimal PrecoUnitario { get; set; }

@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using APIBarbearia.Models;
 using API.Context;
@@ -10,6 +12,7 @@ namespace APIBarbearia.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class ProdutosController : ControllerBase
     {
         private readonly APIDbContext _context;
@@ -23,14 +26,29 @@ namespace APIBarbearia.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Produto>>> GetProdutos()
         {
-            return await _context.Produtos.ToListAsync();
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
+            }
+
+            return await _context.Produtos
+                .Where(p => p.EmpresaId == empresaId.Value)
+                .ToListAsync();
         }
 
         // GET: api/Produtos/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Produto>> GetProduto(int id)
         {
-            var produto = await _context.Produtos.FindAsync(id);
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
+            }
+
+            var produto = await _context.Produtos
+                .FirstOrDefaultAsync(p => p.ProdutoId == id && p.EmpresaId == empresaId.Value);
 
             if (produto == null)
             {
@@ -44,6 +62,13 @@ namespace APIBarbearia.Controllers
         [HttpPost]
         public async Task<ActionResult<Produto>> PostProduto(Produto produto)
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
+            }
+
+            produto.EmpresaId = empresaId.Value;
             _context.Produtos.Add(produto);
             await _context.SaveChangesAsync();
 
@@ -59,7 +84,25 @@ namespace APIBarbearia.Controllers
                 return BadRequest();
             }
 
-            _context.Entry(produto).State = EntityState.Modified;
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
+            }
+
+            var existing = await _context.Produtos
+                .FirstOrDefaultAsync(p => p.ProdutoId == id && p.EmpresaId == empresaId.Value);
+
+            if (existing == null)
+            {
+                return NotFound();
+            }
+
+            existing.NomeProduto = produto.NomeProduto;
+            existing.Descricao = produto.Descricao;
+            existing.PrecoVenda = produto.PrecoVenda;
+            existing.QuantidadeEmEstoque = produto.QuantidadeEmEstoque;
+            existing.Categoria = produto.Categoria;
 
             try
             {
@@ -84,7 +127,14 @@ namespace APIBarbearia.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteProduto(int id)
         {
-            var produto = await _context.Produtos.FindAsync(id);
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                return Forbid();
+            }
+
+            var produto = await _context.Produtos
+                .FirstOrDefaultAsync(p => p.ProdutoId == id && p.EmpresaId == empresaId.Value);
             if (produto == null)
             {
                 return NotFound();
@@ -99,6 +149,24 @@ namespace APIBarbearia.Controllers
         private bool ProdutoExists(int id)
         {
             return _context.Produtos.Any(e => e.ProdutoId == id);
+        }
+
+        private async Task<int?> GetEmpresaIdAsync()
+        {
+            var email = User.FindFirstValue(ClaimTypes.Name)
+                ?? User.FindFirstValue(ClaimTypes.Email)
+                ?? User.FindFirst("unique_name")?.Value;
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return null;
+            }
+
+            return await _context.Usuarios
+                .AsNoTracking()
+                .Where(u => u.Email == email)
+                .Select(u => (int?)u.EmpresaId)
+                .FirstOrDefaultAsync();
         }
     }
 }

@@ -7,8 +7,8 @@ namespace APIBarbearia.Models
     {
         [Key]
         public int NivelAcessoId { get; set; }
-        public string Descricao { get; set; }
-        public string Permissoes { get; set; }
+        public string Descricao { get; set; } = string.Empty;
+        public string Permissoes { get; set; } = string.Empty;
         public DateTime DataCriacao { get; set; }
     }
 }

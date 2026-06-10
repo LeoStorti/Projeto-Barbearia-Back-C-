@@ -11,6 +11,7 @@ namespace APIBarbearia.Models
         public DateTime DataVenda { get; set; }
         public int? ClienteId { get; set; }
         public int? ProfissionalId { get; set; }
+        public int EmpresaId { get; set; }
         public Cliente? Cliente { get; set; }
         public decimal TotalVenda { get; set; }
 

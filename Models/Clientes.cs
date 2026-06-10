@@ -26,5 +26,6 @@ namespace APIBarbearia.Models
 
         public string Observacoes { get; set; } = string.Empty;
         public string Alergias { get; set; } = string.Empty;
+        public int EmpresaId { get; set; }
     }
 }

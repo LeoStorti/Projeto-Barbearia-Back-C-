@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using APIBarbearia.Models;
 using API.Context;
@@ -10,6 +12,7 @@ namespace APIBarbearia.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class FidelidadesController : ControllerBase
     {
         private readonly APIDbContext _context;
@@ -23,8 +26,12 @@ namespace APIBarbearia.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Fidelidade>>> GetFidelidades()
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
             return await _context.Fidelidade
                 .Include(f => f.Cliente)
+                .Where(f => f.Cliente != null && f.Cliente.EmpresaId == empresaId.Value)
                 .ToListAsync();
         }
 
@@ -32,9 +39,12 @@ namespace APIBarbearia.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<Fidelidade>> GetFidelidade(int id)
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
             var fidelidade = await _context.Fidelidade
                 .Include(f => f.Cliente)
-                .FirstOrDefaultAsync(f => f.FidelidadeId == id);
+                .FirstOrDefaultAsync(f => f.FidelidadeId == id && f.Cliente != null && f.Cliente.EmpresaId == empresaId.Value);
 
             if (fidelidade == null)
             {
@@ -48,6 +58,15 @@ namespace APIBarbearia.Controllers
         [HttpPost]
         public async Task<ActionResult<Fidelidade>> PostFidelidade(Fidelidade fidelidade)
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
+            var clienteValido = await _context.Clientes.AnyAsync(c => c.ClienteId == fidelidade.ClienteId && c.EmpresaId == empresaId.Value);
+            if (!clienteValido)
+            {
+                return BadRequest("Cliente inválido para a empresa autenticada.");
+            }
+
             _context.Fidelidade.Add(fidelidade);
             await _context.SaveChangesAsync();
 
@@ -63,7 +82,22 @@ namespace APIBarbearia.Controllers
                 return BadRequest();
             }
 
-            _context.Entry(fidelidade).State = EntityState.Modified;
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
+            var existing = await _context.Fidelidade
+                .Include(f => f.Cliente)
+                .FirstOrDefaultAsync(f => f.FidelidadeId == id && f.Cliente != null && f.Cliente.EmpresaId == empresaId.Value);
+            if (existing == null)
+            {
+                return NotFound();
+            }
+
+            existing.ClienteId = fidelidade.ClienteId;
+            existing.PontosAcumulados = fidelidade.PontosAcumulados;
+            existing.DataAtualizacao = fidelidade.DataAtualizacao;
+
+            _context.Entry(existing).State = EntityState.Modified;
 
             try
             {
@@ -88,7 +122,12 @@ namespace APIBarbearia.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteFidelidade(int id)
         {
-            var fidelidade = await _context.Fidelidade.FindAsync(id);
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
+            var fidelidade = await _context.Fidelidade
+                .Include(f => f.Cliente)
+                .FirstOrDefaultAsync(f => f.FidelidadeId == id && f.Cliente != null && f.Cliente.EmpresaId == empresaId.Value);
             if (fidelidade == null)
             {
                 return NotFound();
@@ -103,6 +142,27 @@ namespace APIBarbearia.Controllers
         private bool FidelidadeExists(int id)
         {
             return _context.Fidelidade.Any(e => e.FidelidadeId == id);
+        }
+
+        private async Task<int?> GetEmpresaIdAsync()
+        {
+            var claim = User.FindFirst("EmpresaId")?.Value;
+            if (!string.IsNullOrWhiteSpace(claim) && int.TryParse(claim, out var claimEmpresaId) && claimEmpresaId > 0)
+            {
+                return claimEmpresaId;
+            }
+
+            var email = User.FindFirstValue(ClaimTypes.Name)
+                ?? User.FindFirstValue(ClaimTypes.Email)
+                ?? User.FindFirst("unique_name")?.Value;
+
+            if (string.IsNullOrWhiteSpace(email)) return null;
+
+            return await _context.Usuarios
+                .AsNoTracking()
+                .Where(u => u.Email == email)
+                .Select(u => (int?)u.EmpresaId)
+                .FirstOrDefaultAsync();
         }
     }
 }

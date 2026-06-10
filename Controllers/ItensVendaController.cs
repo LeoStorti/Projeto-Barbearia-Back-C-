@@ -1,15 +1,18 @@
 ﻿using API.Context;
 using APIBarbearia.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Security.Claims;
 
 namespace APIBarbearia.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class ItensVendaController : ControllerBase
     {
         private readonly APIDbContext _context;
@@ -23,15 +26,24 @@ namespace APIBarbearia.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ItensVenda>>> GetItensVenda()
         {
-            return await _context.ItensVenda.Include(i => i.Produto).ToListAsync();
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
+            return await _context.ItensVenda
+                .Include(i => i.Produto)
+                .Where(i => i.Produto != null && i.Produto.EmpresaId == empresaId.Value)
+                .ToListAsync();
         }
 
         // GET: api/ItensVenda/5
         [HttpGet("{id}")]
         public async Task<ActionResult<ItensVenda>> GetItensVenda(int id)
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
             var itensVenda = await _context.ItensVenda.Include(i => i.Produto)
-                                                      .FirstOrDefaultAsync(i => i.ItemVendaId == id);
+                                                      .FirstOrDefaultAsync(i => i.ItemVendaId == id && i.Produto != null && i.Produto.EmpresaId == empresaId.Value);
 
             if (itensVenda == null)
             {
@@ -45,6 +57,15 @@ namespace APIBarbearia.Controllers
         [HttpPost]
         public async Task<ActionResult<ItensVenda>> PostItensVenda(ItensVenda itensVenda)
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
+            var produtoValido = await _context.Produtos.AnyAsync(p => p.ProdutoId == itensVenda.ProdutoId && p.EmpresaId == empresaId.Value);
+            if (!produtoValido)
+            {
+                return BadRequest("Produto inválido para a empresa autenticada.");
+            }
+
             _context.ItensVenda.Add(itensVenda);
             await _context.SaveChangesAsync();
 
@@ -60,7 +81,28 @@ namespace APIBarbearia.Controllers
                 return BadRequest();
             }
 
-            _context.Entry(itensVenda).State = EntityState.Modified;
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
+            var existing = await _context.ItensVenda
+                .Include(i => i.Produto)
+                .FirstOrDefaultAsync(i => i.ItemVendaId == id && i.Produto != null && i.Produto.EmpresaId == empresaId.Value);
+            if (existing == null)
+            {
+                return NotFound();
+            }
+
+            var produtoValido = await _context.Produtos.AnyAsync(p => p.ProdutoId == itensVenda.ProdutoId && p.EmpresaId == empresaId.Value);
+            if (!produtoValido)
+            {
+                return BadRequest("Produto inválido para a empresa autenticada.");
+            }
+
+            existing.ProdutoId = itensVenda.ProdutoId;
+            existing.Quantidade = itensVenda.Quantidade;
+            existing.PrecoUnitario = itensVenda.PrecoUnitario;
+
+            _context.Entry(existing).State = EntityState.Modified;
 
             try
             {
@@ -85,7 +127,12 @@ namespace APIBarbearia.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteItensVenda(int id)
         {
-            var itensVenda = await _context.ItensVenda.FindAsync(id);
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue) return Forbid();
+
+            var itensVenda = await _context.ItensVenda
+                .Include(i => i.Produto)
+                .FirstOrDefaultAsync(i => i.ItemVendaId == id && i.Produto != null && i.Produto.EmpresaId == empresaId.Value);
             if (itensVenda == null)
             {
                 return NotFound();
@@ -100,6 +147,27 @@ namespace APIBarbearia.Controllers
         private bool ItensVendaExists(int id)
         {
             return _context.ItensVenda.Any(e => e.ItemVendaId == id);
+        }
+
+        private async Task<int?> GetEmpresaIdAsync()
+        {
+            var claim = User.FindFirst("EmpresaId")?.Value;
+            if (!string.IsNullOrWhiteSpace(claim) && int.TryParse(claim, out var claimEmpresaId) && claimEmpresaId > 0)
+            {
+                return claimEmpresaId;
+            }
+
+            var email = User.FindFirstValue(ClaimTypes.Name)
+                ?? User.FindFirstValue(ClaimTypes.Email)
+                ?? User.FindFirst("unique_name")?.Value;
+
+            if (string.IsNullOrWhiteSpace(email)) return null;
+
+            return await _context.Usuarios
+                .AsNoTracking()
+                .Where(u => u.Email == email)
+                .Select(u => (int?)u.EmpresaId)
+                .FirstOrDefaultAsync();
         }
     }
 }

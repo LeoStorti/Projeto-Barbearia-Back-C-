@@ -8,9 +8,9 @@ namespace APIBarbearia.Models
         [Key]
         public int PagamentoId { get; set; }
         public int VendaId { get; set; }
-        public Vendas Venda { get; set; }
+        public Vendas Venda { get; set; } = null!;
         public decimal ValorPago { get; set; }
         public DateTime DataPagamento { get; set; }
-        public string FormaPagamento { get; set; } // Ex: Dinheiro, Cartão de Crédito, etc.
+        public string FormaPagamento { get; set; } = string.Empty; // Ex: Dinheiro, Cartão de Crédito, etc.
     }
 }

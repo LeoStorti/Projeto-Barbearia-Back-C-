@@ -7,9 +7,10 @@ namespace APIBarbearia.Models
     {
         [Key]
         public int UsuarioId { get; set; }
-        public string NomeUsuario { get; set; }
-        public string Email { get; set; }
-        public string Senha { get; set; }
-        public string NivelAcesso { get; set; } // Admin, Profissional
+        public string NomeUsuario { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Senha { get; set; } = string.Empty;
+        public string NivelAcesso { get; set; } = string.Empty; // Admin, Profissional
+        public int EmpresaId { get; set; }
     }
 }

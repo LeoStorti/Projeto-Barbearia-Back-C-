@@ -5,12 +5,15 @@ using System.Threading.Tasks;
 using API.Context;
 using APIBarbearia.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 
 namespace APIBarbearia.Controllers
 {
     [ApiController]
     [Route("api/shops/{shopId:int}/blocked-days")]
+    [Authorize]
     public class BlockedDaysController : ControllerBase
     {
         private readonly APIDbContext _context;
@@ -29,6 +32,12 @@ namespace APIBarbearia.Controllers
         [HttpGet("check")]
         public async Task<IActionResult> Check(int shopId, [FromQuery] string date)
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue || empresaId.Value != shopId)
+            {
+                return Forbid();
+            }
+
             if (!TryParseDateOnly(date, out var parsedDate))
             {
                 return BadRequest(new { message = "Parâmetro 'date' inválido. Use yyyy-MM-dd." });
@@ -58,6 +67,12 @@ namespace APIBarbearia.Controllers
         [HttpPost]
         public async Task<IActionResult> Upsert(int shopId, [FromBody] BlockedDayUpsertRequest request)
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue || empresaId.Value != shopId)
+            {
+                return Forbid();
+            }
+
             if (request == null || string.IsNullOrWhiteSpace(request.Date))
             {
                 return BadRequest(new { message = "Body inválido. Informe 'date'." });
@@ -97,6 +112,12 @@ namespace APIBarbearia.Controllers
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Delete(int shopId, int id)
         {
+            var empresaId = await GetEmpresaIdAsync();
+            if (!empresaId.HasValue || empresaId.Value != shopId)
+            {
+                return Forbid();
+            }
+
             var existing = await _context.DiasBloqueados
                 .FirstOrDefaultAsync(d => d.DiaBloqueadoId == id && d.EmpresaId == shopId);
 
@@ -129,6 +150,30 @@ namespace APIBarbearia.Controllers
 
             parsed = default;
             return false;
+        }
+
+        private async Task<int?> GetEmpresaIdAsync()
+        {
+            var claim = User.FindFirst("EmpresaId")?.Value;
+            if (!string.IsNullOrWhiteSpace(claim) && int.TryParse(claim, out var claimEmpresaId) && claimEmpresaId > 0)
+            {
+                return claimEmpresaId;
+            }
+
+            var email = User.FindFirstValue(ClaimTypes.Name)
+                ?? User.FindFirstValue(ClaimTypes.Email)
+                ?? User.FindFirst("unique_name")?.Value;
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return null;
+            }
+
+            return await _context.Usuarios
+                .AsNoTracking()
+                .Where(u => u.Email == email)
+                .Select(u => (int?)u.EmpresaId)
+                .FirstOrDefaultAsync();
         }
     }
 }

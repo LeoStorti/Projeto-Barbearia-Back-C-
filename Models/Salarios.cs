@@ -24,6 +24,6 @@ namespace APIBarbearia.Models
         public DateTime? DataFim { get; set; } // Pode ser nulo, caso o salário esteja ativo indefinidamente
 
         // Relacionamento com a tabela de Profissionais
-        public virtual Profissional Profissional { get; set; }
+        public virtual Profissional Profissional { get; set; } = null!;
     }
 }
